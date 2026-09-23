@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+<h1>โปรไฟล์</h1>
+<div class="form-card">
+  <table class="kv-table">
+    <tr><td>Username</td><td>{{ user.username }}</td></tr>
+    <tr><td>ชื่อ</td><td>{{ user.full_name or '-' }}</td></tr>
+    <tr><td>สิทธิ์</td><td>{{ user.role.value }}</td></tr>
+  </table>
+</div>
+
+<div class="form-card">
+  <h2>เปลี่ยนรหัสผ่าน</h2>
+  <form id="pwForm">
+    <label>รหัสผ่านใหม่</label>
+    <input type="password" id="newPassword" required minlength="4">
+    <div id="pwError" class="error-text"></div>
+    <div id="pwSuccess" class="success-text"></div>
+    <button type="submit" class="btn btn-primary">บันทึก</button>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('pwForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('pwError');
+  const okBox = document.getElementById('pwSuccess');
+  errBox.textContent = ''; okBox.textContent = '';
+  try {
+    await apiFetch('/api/me/password', {
+      method: 'PUT',
+      body: JSON.stringify({ password: document.getElementById('newPassword').value }),
+    });
+    okBox.textContent = 'เปลี่ยนรหัสผ่านสำเร็จ';
+    e.target.reset();
+  } catch (err) {
+    errBox.textContent = err.message;
+  }
+});
+</script>
+{% endblock %}

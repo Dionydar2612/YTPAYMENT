@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Expenses{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>ค่าใช้จ่าย</h1>
+</div>
+
+<div class="form-card">
+  <h2>เพิ่มค่าใช้จ่ายใหม่</h2>
+  <form id="expenseForm" class="inline-form wrap">
+    <div>
+      <label>เดือน</label>
+      <input type="month" id="expMonth" required>
+    </div>
+    <div class="grow">
+      <label>รายละเอียด</label>
+      <input type="text" id="expDesc" placeholder="เช่น ค่า Internet เดือน September" required>
+    </div>
+    <div>
+      <label>จำนวนเงินทั้งหมด</label>
+      <input type="number" step="0.01" id="expAmount" required>
+    </div>
+    <div>
+      <label>&nbsp;</label>
+      <button type="submit" class="btn btn-primary">เพิ่มค่าใช้จ่าย</button>
+    </div>
+  </form>
+  <div id="expError" class="error-text"></div>
+</div>
+
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>เดือน</th><th>รายละเอียด</th><th>จำนวนเงินรวม</th><th>ผู้ร่วมจ่าย</th><th>ต่อคน</th><th>สร้างเมื่อ</th></tr></thead>
+  <tbody id="expRows"><tr><td colspan="6">กำลังโหลด...</td></tr></tbody>
+</table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('expMonth').value = new Date().toISOString().slice(0,7);
+
+async function loadExpenses() {
+  const list = await apiFetch('/api/expenses');
+  const tbody = document.getElementById('expRows');
+  tbody.innerHTML = list.map(e => `
+    <tr>
+      <td>${e.month}</td><td>${e.description}</td><td>${fmtMoney(e.total_amount)}</td>
+      <td>${e.participants_count}</td><td>${fmtMoney(e.per_person_amount)}</td>
+      <td>${new Date(e.created_at).toLocaleString('th-TH')}</td>
+    </tr>`).join('') || '<tr><td colspan="6">ยังไม่มีค่าใช้จ่าย</td></tr>';
+}
+
+document.getElementById('expenseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('expError');
+  errBox.textContent = '';
+  try {
+    await apiFetch('/api/expenses', {
+      method: 'POST',
+      body: JSON.stringify({
+        month: document.getElementById('expMonth').value,
+        description: document.getElementById('expDesc').value.trim(),
+        total_amount: parseFloat(document.getElementById('expAmount').value),
+      }),
+    });
+    e.target.reset();
+    document.getElementById('expMonth').value = new Date().toISOString().slice(0,7);
+    await loadExpenses();
+    showToast('เพิ่มค่าใช้จ่ายสำเร็จ', 'success');
+  } catch (err) {
+    errBox.textContent = err.message;
+  }
+});
+
+loadExpenses();
+</script>
+{% endblock %}

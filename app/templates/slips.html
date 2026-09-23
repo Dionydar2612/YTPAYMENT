@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Payment Slips{% endblock %}
+{% block content %}
+{% if user.role.value == 'member' %}
+<h1>อัปโหลดสลิปการโอนเงิน</h1>
+<div class="form-card">
+  <form id="uploadForm" enctype="multipart/form-data">
+    <label>เดือนที่ต้องการชำระ</label>
+    <input type="month" id="slipMonth" required>
+    <label>จำนวนเงินที่โอน</label>
+    <input type="number" step="0.01" id="slipAmount" required>
+    <label>วันที่/เวลาโอน</label>
+    <input type="datetime-local" id="slipTime">
+    <label>รูปสลิป (JPG, PNG, WEBP)</label>
+    <input type="file" id="slipFile" accept=".jpg,.jpeg,.png,.webp" required>
+    <div id="uploadError" class="error-text"></div>
+    <button type="submit" class="btn btn-primary btn-block">อัปโหลดสลิป</button>
+  </form>
+</div>
+{% endif %}
+
+<h2>{% if user.role.value == 'admin' %}สลิปทั้งหมด{% else %}สลิปของฉัน{% endif %}</h2>
+{% if user.role.value == 'admin' %}
+<div class="filter-row">
+  <button class="chip active" data-status="pending">รอตรวจสอบ</button>
+  <button class="chip" data-status="approved">อนุมัติแล้ว</button>
+  <button class="chip" data-status="rejected">ปฏิเสธ</button>
+  <button class="chip" data-status="">ทั้งหมด</button>
+</div>
+{% endif %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr>
+      {% if user.role.value == 'admin' %}<th>สมาชิก</th>{% endif %}
+      <th>เดือน</th><th>จำนวนเงิน</th><th>สลิป</th><th>สถานะ</th><th>อัปโหลดเมื่อ</th>{% if user.role.value == 'admin' %}<th>จัดการ</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody id="slipRows"><tr><td colspan="7">กำลังโหลด...</td></tr></tbody>
+</table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const isAdmin = {{ 'true' if user.role.value == 'admin' else 'false' }};
+const statusLabel = { pending: 'รอตรวจสอบ', approved: 'อนุมัติแล้ว', rejected: 'ปฏิเสธ' };
+let currentFilter = 'pending';
+
+if (document.getElementById('slipMonth')) {
+  document.getElementById('slipMonth').value = new Date().toISOString().slice(0,7);
+}
+
+async function loadSlips() {
+  const qs = isAdmin && currentFilter ? `?status_filter=${currentFilter}` : '';
+  const slips = await apiFetch('/api/slips' + qs);
+  const tbody = document.getElementById('slipRows');
+  tbody.innerHTML = slips.map(s => `
+    <tr>
+      ${isAdmin ? `<td>${s.username}</td>` : ''}
+      <td>${s.month}</td>
+      <td>${fmtMoney(s.amount_claimed)}</td>
+      <td><a href="/api/slips/${s.id}/file" target="_blank" class="link-btn">ดูรูป</a></td>
+      <td><span class="badge badge-slip-${s.status}">${statusLabel[s.status] || s.status}</span>${s.reject_reason ? `<div class="muted small">${s.reject_reason}</div>` : ''}</td>
+      <td>${new Date(s.uploaded_at).toLocaleString('th-TH')}</td>
+      ${isAdmin ? `<td>${s.status === 'pending' ? `
+        <button class="link-btn" onclick="approveSlip('${s.id}')">อนุมัติ</button>
+        <button class="link-btn danger" onclick="rejectSlip('${s.id}')">ปฏิเสธ</button>` : '-'}</td>` : ''}
+    </tr>`).join('') || `<tr><td colspan="7">ไม่มีรายการ</td></tr>`;
+}
+
+if (isAdmin) {
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      currentFilter = chip.dataset.status;
+      loadSlips();
+    });
+  });
+}
+
+async function approveSlip(id) {
+  if (!confirm('ยืนยันอนุมัติสลิปนี้?')) return;
+  try {
+    await apiFetch(`/api/slips/${id}/approve`, { method: 'PUT' });
+    showToast('อนุมัติแล้ว', 'success');
+    loadSlips();
+  } catch (err) { showToast(err.message); }
+}
+
+async function rejectSlip(id) {
+  const reason = prompt('เหตุผลที่ปฏิเสธ:');
+  if (!reason) return;
+  try {
+    await apiFetch(`/api/slips/${id}/reject`, { method: 'PUT', body: JSON.stringify({ reason }) });
+    showToast('ปฏิเสธสลิปแล้ว', 'success');
+    loadSlips();
+  } catch (err) { showToast(err.message); }
+}
+
+const uploadForm = document.getElementById('uploadForm');
+if (uploadForm) {
+  uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = document.getElementById('uploadError');
+    errBox.textContent = '';
+    const fd = new FormData();
+    fd.append('month', document.getElementById('slipMonth').value);
+    fd.append('amount_claimed', document.getElementById('slipAmount').value);
+    const t = document.getElementById('slipTime').value;
+    if (t) fd.append('transferred_at', t);
+    fd.append('file', document.getElementById('slipFile').files[0]);
+    try {
+      const res = await fetch('/api/slips', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'อัปโหลดไม่สำเร็จ');
+      }
+      e.target.reset();
+      document.getElementById('slipMonth').value = new Date().toISOString().slice(0,7);
+      showToast('อัปโหลดสลิปสำเร็จ รอตรวจสอบ', 'success');
+      loadSlips();
+    } catch (err) {
+      errBox.textContent = err.message;
+    }
+  });
+}
+
+loadSlips();
+</script>
+{% endblock %}

@@ -1,0 +1,1847 @@
+{% extends "base.html" %}
+
+{% block title %}Members{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1>สมาชิก</h1>
+
+  <button
+    class="btn btn-primary"
+    id="openAddBtn"
+  >
+    + เพิ่มสมาชิก
+  </button>
+</div>
+
+
+<!-- =====================================================
+     MEMBERS TABLE
+===================================================== -->
+
+<div class="table-wrap">
+
+  <table class="data-table">
+
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>ชื่อ</th>
+        <th>Role</th>
+        <th>สถานะ</th>
+        <th>จัดการ</th>
+      </tr>
+    </thead>
+
+    <tbody id="memberRows">
+
+      <tr>
+        <td colspan="5">
+          กำลังโหลด...
+        </td>
+      </tr>
+
+    </tbody>
+
+  </table>
+
+</div>
+
+
+<!-- =====================================================
+     ADD MEMBER MODAL
+===================================================== -->
+
+<div
+  class="modal"
+  id="addModal"
+>
+
+  <div class="modal-box">
+
+    <h2>เพิ่มสมาชิก</h2>
+
+    <form id="addForm">
+
+      <label>
+        Username
+      </label>
+
+      <input
+        type="text"
+        id="newUsername"
+        required
+      >
+
+
+      <label>
+        ชื่อ-นามสกุล
+      </label>
+
+      <input
+        type="text"
+        id="newFullName"
+      >
+
+
+      <label>
+        Password
+      </label>
+
+      <input
+        type="password"
+        id="newPassword"
+        required
+      >
+
+
+      <label>
+        Role
+      </label>
+
+      <select id="newRole">
+
+        <option value="member">
+          Member
+        </option>
+
+        <option value="admin">
+          Admin
+        </option>
+
+      </select>
+
+
+      <div
+        id="addError"
+        class="error-text"
+      ></div>
+
+
+      <div class="modal-actions">
+
+        <button
+          type="button"
+          class="btn btn-secondary"
+          id="cancelAddBtn"
+        >
+          ยกเลิก
+        </button>
+
+        <button
+          type="submit"
+          class="btn btn-primary"
+        >
+          บันทึก
+        </button>
+
+      </div>
+
+    </form>
+
+  </div>
+
+</div>
+
+
+<!-- =====================================================
+     MEMBER DETAIL MODAL
+===================================================== -->
+
+<div
+  class="modal"
+  id="detailModal"
+>
+
+  <div class="modal-box wide">
+
+    <h2 id="detailTitle">
+      รายละเอียดสมาชิก
+    </h2>
+
+    <div id="detailContent"></div>
+
+    <div class="modal-actions">
+
+      <button
+        type="button"
+        class="btn btn-secondary"
+        id="closeDetailBtn"
+      >
+        ปิด
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+{% endblock %}
+
+
+{% block scripts %}
+
+<script>
+
+let members = [];
+
+
+/* =====================================================
+   BASIC HELPERS
+===================================================== */
+
+function money(value) {
+
+  const n = Number(value || 0);
+
+  return n.toLocaleString(
+    'th-TH',
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }
+  ) + ' บาท';
+
+}
+
+
+function escapeHtml(value) {
+
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+}
+
+
+/* =====================================================
+   LOAD MEMBERS
+===================================================== */
+
+async function loadMembers() {
+
+  try {
+
+    members = await apiFetch(
+      '/api/members'
+    );
+
+    const tbody =
+      document.getElementById(
+        'memberRows'
+      );
+
+
+    if (!members.length) {
+
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5">
+            ยังไม่มีสมาชิก
+          </td>
+        </tr>
+      `;
+
+      return;
+    }
+
+
+    tbody.innerHTML = members.map(
+      m => `
+
+        <tr id="member-${m.id}">
+
+          <td>
+            ${escapeHtml(m.username)}
+          </td>
+
+          <td>
+            ${
+              escapeHtml(
+                m.full_name
+              ) || '-'
+            }
+          </td>
+
+          <td>
+            ${escapeHtml(m.role)}
+          </td>
+
+          <td>
+
+            ${
+              m.is_active
+
+                ? `
+                  <span class="badge badge-paid">
+                    Active
+                  </span>
+                `
+
+                : `
+                  <span class="badge badge-unpaid">
+                    ปิดใช้งาน
+                  </span>
+                `
+            }
+
+          </td>
+
+          <td>
+
+            <button
+              class="link-btn"
+              onclick="viewDetail('${m.id}')"
+            >
+              รายละเอียด
+            </button>
+
+
+            <button
+              class="link-btn danger"
+              onclick="deleteMember('${m.id}')"
+            >
+              ลบ
+            </button>
+
+          </td>
+
+        </tr>
+
+      `
+    ).join('');
+
+
+  } catch (err) {
+
+    document.getElementById(
+      'memberRows'
+    ).innerHTML = `
+
+      <tr>
+
+        <td
+          colspan="5"
+          class="error-text"
+        >
+          ${escapeHtml(err.message)}
+        </td>
+
+      </tr>
+
+    `;
+
+  }
+
+}
+
+
+/* =====================================================
+   ADD MEMBER MODAL
+===================================================== */
+
+document
+  .getElementById('openAddBtn')
+  .onclick = () => {
+
+    document
+      .getElementById('addModal')
+      .classList.add('open');
+
+  };
+
+
+document
+  .getElementById('cancelAddBtn')
+  .onclick = () => {
+
+    document
+      .getElementById('addModal')
+      .classList.remove('open');
+
+  };
+
+
+/* =====================================================
+   CLOSE DETAIL
+===================================================== */
+
+document
+  .getElementById('closeDetailBtn')
+  .onclick = () => {
+
+    document
+      .getElementById('detailModal')
+      .classList.remove('open');
+
+  };
+
+
+/* =====================================================
+   ADD MEMBER
+===================================================== */
+
+document
+  .getElementById('addForm')
+  .addEventListener(
+    'submit',
+    async (e) => {
+
+      e.preventDefault();
+
+
+      const errBox =
+        document.getElementById(
+          'addError'
+        );
+
+      errBox.textContent = '';
+
+
+      try {
+
+        await apiFetch(
+          '/api/members',
+          {
+            method: 'POST',
+
+            body: JSON.stringify({
+
+              username:
+                document
+                  .getElementById(
+                    'newUsername'
+                  )
+                  .value
+                  .trim(),
+
+              full_name:
+                document
+                  .getElementById(
+                    'newFullName'
+                  )
+                  .value
+                  .trim(),
+
+              password:
+                document
+                  .getElementById(
+                    'newPassword'
+                  )
+                  .value,
+
+              role:
+                document
+                  .getElementById(
+                    'newRole'
+                  )
+                  .value
+
+            })
+          }
+        );
+
+
+        document
+          .getElementById(
+            'addModal'
+          )
+          .classList.remove('open');
+
+
+        e.target.reset();
+
+
+        showToast(
+          'เพิ่มสมาชิกสำเร็จ',
+          'success'
+        );
+
+
+        await loadMembers();
+
+
+      } catch (err) {
+
+        errBox.textContent =
+          err.message;
+
+      }
+
+    }
+  );
+
+
+/* =====================================================
+   DELETE MEMBER
+===================================================== */
+
+async function deleteMember(id) {
+
+  if (
+    !confirm(
+      'ยืนยันลบสมาชิกนี้?\n\n' +
+      'ถ้ามีประวัติการเงินอยู่ ' +
+      'ระบบจะปิดใช้งานแทนการลบถาวร'
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const res =
+      await apiFetch(
+        `/api/members/${id}`,
+        {
+          method: 'DELETE'
+        }
+      );
+
+
+    showToast(
+      res.message ||
+      'ดำเนินการสำเร็จ',
+      'success'
+    );
+
+
+    await loadMembers();
+
+
+  } catch (err) {
+
+    showToast(
+      err.message
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   VIEW MEMBER DETAIL
+===================================================== */
+
+async function viewDetail(id) {
+
+  try {
+
+    const data =
+      await apiFetch(
+        `/api/members/${id}/detail`
+      );
+
+
+    document.getElementById(
+      'detailTitle'
+    ).textContent =
+      `รายละเอียด: ${
+        data.user.username
+      }`;
+
+
+    const statusLabel = {
+
+      unpaid:
+        'ยังไม่ชำระ',
+
+      partial:
+        'ชำระบางส่วน',
+
+      paid:
+        'ชำระครบ',
+
+      credit:
+        'มีเครดิต'
+
+    };
+
+
+    const statusClass = {
+
+      unpaid:
+        'badge-unpaid',
+
+      partial:
+        'badge-partial',
+
+      paid:
+        'badge-paid',
+
+      credit:
+        'badge-credit'
+
+    };
+
+
+    /*
+     * HISTORY ROWS
+     */
+
+    const rows =
+      (data.balances || [])
+        .map(
+          b => `
+
+            <tr>
+
+              <td>
+                ${escapeHtml(b.month)}
+              </td>
+
+              <td>
+                ${money(b.total_due)}
+              </td>
+
+              <td>
+                ${money(b.total_paid)}
+              </td>
+
+              <td>
+                ${
+                  Number(
+                    b.outstanding
+                  ) > 0
+
+                    ? `
+                      <strong>
+                        ${money(
+                          b.outstanding
+                        )}
+                      </strong>
+                    `
+
+                    : money(0)
+                }
+              </td>
+
+              <td>
+                ${
+                  Number(
+                    b.credit_new
+                  ) > 0
+
+                    ? `
+                      <strong>
+                        ${money(
+                          b.credit_new
+                        )}
+                      </strong>
+                    `
+
+                    : money(0)
+                }
+              </td>
+
+              <td>
+
+                <span
+                  class="badge ${
+                    statusClass[
+                      b.status
+                    ] ||
+                    'badge-unpaid'
+                  }"
+                >
+
+                  ${
+                    statusLabel[
+                      b.status
+                    ] ||
+                    b.status ||
+                    '-'
+                  }
+
+                </span>
+
+              </td>
+
+            </tr>
+
+          `
+        )
+        .join('');
+
+
+    const userOptions =
+      members
+        .map(
+          m => `
+
+            <option
+              value="${m.id}"
+            >
+
+              ${escapeHtml(m.username)}
+
+              ${
+                m.full_name
+                  ? ` - ${
+                      escapeHtml(
+                        m.full_name
+                      )
+                    }`
+                  : ''
+              }
+
+            </option>
+
+          `
+        )
+        .join('');
+
+
+    /*
+     * DETAIL HTML
+     */
+
+    document.getElementById(
+      'detailContent'
+    ).innerHTML = `
+
+
+      <!-- =========================================
+           SUMMARY
+      ========================================== -->
+
+      <div
+        class="card-grid"
+        style="
+          margin-bottom: 24px;
+        "
+      >
+
+        <div
+          class="stat-card warn"
+        >
+
+          <div class="stat-label">
+            ยอดค้างทั้งหมด
+          </div>
+
+          <div class="stat-value">
+
+            ${money(
+              data.summary
+                ?.total_outstanding
+              || 0
+            )}
+
+          </div>
+
+        </div>
+
+
+        <div
+          class="stat-card good"
+        >
+
+          <div class="stat-label">
+            เครดิตทั้งหมด
+          </div>
+
+          <div class="stat-value">
+
+            ${money(
+              data.summary
+                ?.total_credit
+              || 0
+            )}
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- =========================================
+           MANUAL PAYMENT
+      ========================================== -->
+
+      <div
+        class="form-card"
+        style="
+          margin-bottom: 20px;
+        "
+      >
+
+        <h3>
+          เพิ่มยอดชำระด้วยมือ
+        </h3>
+
+        <p
+          style="
+            color: #666;
+            margin-bottom: 15px;
+          "
+        >
+          ใช้สำหรับบันทึกเงินที่สมาชิกจ่ายจริง
+          เช่น เงินสด หรือโอนเข้าบัญชี
+        </p>
+
+
+        <div class="action-grid">
+
+          <div>
+
+            <label>
+              เดือน
+            </label>
+
+            <input
+              type="month"
+              id="paymentMonth"
+              value="${getCurrentMonth()}"
+            >
+
+          </div>
+
+
+          <div>
+
+            <label>
+              จำนวนเงิน
+            </label>
+
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              id="paymentAmount"
+              placeholder="เช่น 79.80"
+            >
+
+          </div>
+
+
+          <div>
+
+            <label>
+              หมายเหตุ
+            </label>
+
+            <input
+              type="text"
+              id="paymentNote"
+              placeholder="เช่น รับเงินสด"
+            >
+
+          </div>
+
+        </div>
+
+
+        <button
+          type="button"
+          class="btn btn-primary btn-block"
+          style="
+            margin-top: 15px;
+          "
+          onclick="addManualPayment('${id}')"
+        >
+          + เพิ่มยอดชำระ
+        </button>
+
+      </div>
+
+
+      <!-- =========================================
+           CLEAR OUTSTANDING
+      ========================================== -->
+
+      <div
+        class="form-card"
+        style="
+          margin-bottom: 20px;
+        "
+      >
+
+        <h3>
+          เคลียร์ยอดค้าง
+        </h3>
+
+        <p
+          style="
+            color: #666;
+            margin-bottom: 15px;
+          "
+        >
+          ถ้าเว้นจำนวนเงินว่าง
+          ระบบจะเคลียร์ยอดค้างทั้งหมด
+          โดยเริ่มจากเดือนเก่าสุดก่อน
+        </p>
+
+
+        <div class="action-grid">
+
+          <div>
+
+            <label>
+              จำนวนเงิน
+            </label>
+
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              id="clearAmount"
+              placeholder="เว้นว่าง = เคลียร์ทั้งหมด"
+            >
+
+          </div>
+
+
+          <div>
+
+            <label>
+              หมายเหตุ
+            </label>
+
+            <input
+              type="text"
+              id="clearNote"
+              placeholder="เช่น รับเงินสด"
+            >
+
+          </div>
+
+        </div>
+
+
+        <button
+          type="button"
+          class="btn btn-primary btn-block"
+          style="
+            margin-top: 15px;
+          "
+          onclick="clearOutstanding('${id}')"
+        >
+          ✓ เคลียร์ยอด
+        </button>
+
+      </div>
+
+
+      <!-- =========================================
+           OLD BALANCE
+      ========================================== -->
+
+      <div
+        class="form-card"
+        style="
+          margin-bottom: 20px;
+        "
+      >
+
+        <h3>
+          เพิ่มยอดค้างเก่า
+        </h3>
+
+        <p
+          style="
+            color: #666;
+            margin-bottom: 15px;
+          "
+        >
+          ใช้สำหรับเพิ่มยอดที่เกิดก่อนระบบ
+          หรือยอดที่ต้องการปรับด้วยมือ
+        </p>
+
+
+        <div class="action-grid">
+
+          <div>
+
+            <label>
+              เดือน
+            </label>
+
+            <input
+              type="month"
+              id="oldBalanceMonth"
+              value="${getCurrentMonth()}"
+            >
+
+          </div>
+
+
+          <div>
+
+            <label>
+              จำนวนเงิน
+            </label>
+
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              id="oldBalanceAmount"
+              placeholder="เช่น 79.80"
+            >
+
+          </div>
+
+        </div>
+
+
+        <button
+          type="button"
+          class="btn btn-secondary btn-block"
+          style="
+            margin-top: 15px;
+          "
+          onclick="addOldBalance('${id}')"
+        >
+          + เพิ่มยอดค้างเก่า
+        </button>
+
+      </div>
+
+
+      <!-- =========================================
+           CREDIT TRANSFER
+      ========================================== -->
+
+      <div
+        class="form-card"
+        style="
+          margin-bottom: 20px;
+        "
+      >
+
+        <h3>
+          กระจายเครดิตด้วยมือ
+        </h3>
+
+        <p
+          style="
+            color: #666;
+            margin-bottom: 15px;
+          "
+        >
+          เครดิตจะไม่ถูกนำไปใช้เอง
+          Admin เป็นผู้กำหนดว่าจะนำเครดิต
+          จากใคร ไปให้ใคร และใช้กับเดือนไหน
+        </p>
+
+
+        <div class="action-grid">
+
+          <!-- SOURCE USER -->
+
+          <div>
+
+            <label>
+              เครดิตจากสมาชิก
+            </label>
+
+            <select
+              id="creditSourceUser"
+            >
+
+              ${userOptions}
+
+            </select>
+
+          </div>
+
+
+          <!-- SOURCE MONTH -->
+
+          <div>
+
+            <label>
+              เครดิตจากเดือน
+            </label>
+
+            <input
+              type="month"
+              id="creditSourceMonth"
+              value="${getCurrentMonth()}"
+            >
+
+          </div>
+
+
+          <!-- TARGET USER -->
+
+          <div>
+
+            <label>
+              นำเครดิตไปให้สมาชิก
+            </label>
+
+            <select
+              id="creditTargetUser"
+            >
+
+              ${userOptions}
+
+            </select>
+
+          </div>
+
+
+          <!-- TARGET MONTH -->
+
+          <div>
+
+            <label>
+              นำไปใช้กับเดือน
+            </label>
+
+            <input
+              type="month"
+              id="creditTargetMonth"
+              value="${getCurrentMonth()}"
+            >
+
+          </div>
+
+
+          <!-- AMOUNT -->
+
+          <div>
+
+            <label>
+              จำนวนเครดิต
+            </label>
+
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              id="creditAmount"
+              placeholder="เช่น 100"
+            >
+
+          </div>
+
+
+          <!-- NOTE -->
+
+          <div>
+
+            <label>
+              หมายเหตุ
+            </label>
+
+            <input
+              type="text"
+              id="creditNote"
+              placeholder="เช่น โอนเครดิตให้เดือนหน้า"
+            >
+
+          </div>
+
+        </div>
+
+
+        <button
+          type="button"
+          class="btn btn-primary btn-block"
+          style="
+            margin-top: 15px;
+          "
+          onclick="allocateCredit('${id}')"
+        >
+          → กระจายเครดิต
+        </button>
+
+      </div>
+
+
+      <!-- =========================================
+           HISTORY
+      ========================================== -->
+
+      <h3>
+        ประวัติยอด
+      </h3>
+
+
+      <div class="table-wrap">
+
+        <table class="data-table">
+
+          <thead>
+
+            <tr>
+
+              <th>
+                เดือน
+              </th>
+
+              <th>
+                ต้องจ่าย
+              </th>
+
+              <th>
+                จ่ายแล้ว
+              </th>
+
+              <th>
+                ค้าง
+              </th>
+
+              <th>
+                เครดิตเหลือ
+              </th>
+
+              <th>
+                สถานะ
+              </th>
+
+            </tr>
+
+          </thead>
+
+
+          <tbody>
+
+            ${
+              rows ||
+
+              `
+                <tr>
+                  <td colspan="6">
+                    ยังไม่มีประวัติยอด
+                  </td>
+                </tr>
+              `
+            }
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    `;
+
+
+    /*
+     * ตั้งค่า Target User
+     * เป็นสมาชิกที่กำลังดู
+     */
+
+    const targetUser =
+      document.getElementById(
+        'creditTargetUser'
+      );
+
+    if (targetUser) {
+
+      targetUser.value = id;
+
+    }
+
+
+    /*
+     * เปิด Modal
+     */
+
+    document
+      .getElementById(
+        'detailModal'
+      )
+      .classList.add('open');
+
+
+  } catch (err) {
+
+    showToast(
+      err.message
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   ADD MANUAL PAYMENT
+===================================================== */
+
+async function addManualPayment(id) {
+
+  const month =
+    document.getElementById(
+      'paymentMonth'
+    ).value;
+
+
+  const amountRaw =
+    document.getElementById(
+      'paymentAmount'
+    ).value;
+
+
+  const note =
+    document.getElementById(
+      'paymentNote'
+    ).value
+    .trim();
+
+
+  if (!month) {
+
+    showToast(
+      'กรุณาเลือกเดือน'
+    );
+
+    return;
+
+  }
+
+
+  if (
+    !amountRaw ||
+    Number(amountRaw) <= 0
+  ) {
+
+    showToast(
+      'กรุณาใส่จำนวนเงินที่มากกว่า 0'
+    );
+
+    return;
+
+  }
+
+
+  try {
+
+    const result =
+      await apiFetch(
+        '/api/payments',
+        {
+          method: 'POST',
+
+          body: JSON.stringify({
+
+            user_id: id,
+
+            month: month,
+
+            amount:
+              Number(amountRaw),
+
+            note:
+              note ||
+              'เพิ่มยอดชำระโดย Admin'
+
+          })
+
+        }
+      );
+
+
+    showToast(
+      `บันทึกยอด ${
+        money(result.amount)
+      } แล้ว`,
+      'success'
+    );
+
+
+    await viewDetail(id);
+
+  } catch (err) {
+
+    showToast(
+      err.message
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   CLEAR OUTSTANDING
+===================================================== */
+
+async function clearOutstanding(id) {
+
+  const amountRaw =
+    document.getElementById(
+      'clearAmount'
+    ).value
+    .trim();
+
+
+  const note =
+    document.getElementById(
+      'clearNote'
+    ).value
+    .trim();
+
+
+  let confirmMessage;
+
+
+  if (amountRaw) {
+
+    confirmMessage =
+      `ยืนยันเคลียร์ยอด ${money(
+        amountRaw
+      )} ?`;
+
+  } else {
+
+    confirmMessage =
+      'ยืนยันเคลียร์ยอดค้างทั้งหมด?\n\n' +
+      'ระบบจะเริ่มเคลียร์จากเดือนเก่าสุดก่อน';
+
+  }
+
+
+  if (!confirm(confirmMessage)) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const result =
+      await apiFetch(
+        `/api/payments/clear/${id}`,
+        {
+          method: 'POST',
+
+          body: JSON.stringify({
+
+            amount:
+              amountRaw
+                ? Number(amountRaw)
+                : null,
+
+            note:
+              note ||
+              'เคลียร์ยอดค้างโดย Admin'
+
+          })
+
+        }
+      );
+
+
+    showToast(
+      `เคลียร์ยอด ${
+        money(result.amount)
+      } แล้ว`,
+      'success'
+    );
+
+
+    await viewDetail(id);
+
+
+  } catch (err) {
+
+    showToast(
+      err.message
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   ADD OLD BALANCE
+===================================================== */
+
+async function addOldBalance(id) {
+
+  const month =
+    document.getElementById(
+      'oldBalanceMonth'
+    ).value;
+
+
+  const amountRaw =
+    document.getElementById(
+      'oldBalanceAmount'
+    ).value;
+
+
+  if (!month) {
+
+    showToast(
+      'กรุณาเลือกเดือน'
+    );
+
+    return;
+
+  }
+
+
+  if (
+    !amountRaw ||
+    Number(amountRaw) <= 0
+  ) {
+
+    showToast(
+      'กรุณาใส่จำนวนเงิน'
+    );
+
+    return;
+
+  }
+
+
+  if (
+    !confirm(
+      `ยืนยันเพิ่มยอดค้าง ${
+        money(amountRaw)
+      } ?`
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  try {
+
+    await apiFetch(
+      `/api/members/${id}/old-balance`,
+      {
+        method: 'POST',
+
+        body: JSON.stringify({
+
+          month: month,
+
+          amount:
+            Number(amountRaw)
+
+        })
+
+      }
+    );
+
+
+    showToast(
+      'เพิ่มยอดค้างเก่าแล้ว',
+      'success'
+    );
+
+
+    await viewDetail(id);
+
+
+  } catch (err) {
+
+    showToast(
+      err.message
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   CREDIT TRANSFER
+===================================================== */
+
+async function allocateCredit(currentId) {
+
+  const sourceUser =
+    document.getElementById(
+      'creditSourceUser'
+    ).value;
+
+
+  const sourceMonth =
+    document.getElementById(
+      'creditSourceMonth'
+    ).value;
+
+
+  const targetUser =
+    document.getElementById(
+      'creditTargetUser'
+    ).value;
+
+
+  const targetMonth =
+    document.getElementById(
+      'creditTargetMonth'
+    ).value;
+
+
+  const amountRaw =
+    document.getElementById(
+      'creditAmount'
+    ).value;
+
+
+  const note =
+    document.getElementById(
+      'creditNote'
+    ).value
+    .trim();
+
+
+  if (!sourceUser) {
+
+    showToast(
+      'กรุณาเลือกสมาชิกต้นทาง'
+    );
+
+    return;
+
+  }
+
+
+  if (!sourceMonth) {
+
+    showToast(
+      'กรุณาเลือกเดือนต้นทาง'
+    );
+
+    return;
+
+  }
+
+
+  if (!targetUser) {
+
+    showToast(
+      'กรุณาเลือกสมาชิกปลายทาง'
+    );
+
+    return;
+
+  }
+
+
+  if (!targetMonth) {
+
+    showToast(
+      'กรุณาเลือกเดือนปลายทาง'
+    );
+
+    return;
+
+  }
+
+
+  if (
+    !amountRaw ||
+    Number(amountRaw) <= 0
+  ) {
+
+    showToast(
+      'กรุณาใส่จำนวนเครดิต'
+    );
+
+    return;
+
+  }
+
+
+  if (
+    sourceUser === targetUser &&
+    sourceMonth === targetMonth
+  ) {
+
+    showToast(
+      'ไม่สามารถโอนเครดิตให้ตัวเองในเดือนเดียวกัน'
+    );
+
+    return;
+
+  }
+
+
+  const sourceName =
+    document.querySelector(
+      `#creditSourceUser option[value="${sourceUser}"]`
+    )?.textContent
+    || sourceUser;
+
+
+  const targetName =
+    document.querySelector(
+      `#creditTargetUser option[value="${targetUser}"]`
+    )?.textContent
+    || targetUser;
+
+
+  const confirmMessage =
+    `ยืนยันกระจายเครดิต?\n\n` +
+
+    `จาก: ${sourceName}\n` +
+
+    `เดือน: ${sourceMonth}\n\n` +
+
+    `ไปยัง: ${targetName}\n` +
+
+    `เดือน: ${targetMonth}\n\n` +
+
+    `จำนวน: ${money(amountRaw)}`;
+
+
+  if (!confirm(confirmMessage)) {
+
+    return;
+
+  }
+
+
+  try {
+
+    await apiFetch(
+      '/api/payments/credit-transfer',
+      {
+        method: 'POST',
+
+        body: JSON.stringify({
+
+          from_user_id:
+            sourceUser,
+
+          source_month:
+            sourceMonth,
+
+          to_user_id:
+            targetUser,
+
+          target_month:
+            targetMonth,
+
+          amount:
+            Number(amountRaw),
+
+          note:
+            note ||
+            'กระจายเครดิตโดย Admin'
+
+        })
+
+      }
+    );
+
+
+    showToast(
+      'กระจายเครดิตเรียบร้อยแล้ว',
+      'success'
+    );
+
+
+    /*
+     * Refresh รายละเอียดของสมาชิก
+     * ที่กำลังเปิดอยู่
+     */
+
+    await viewDetail(
+      currentId
+    );
+
+
+  } catch (err) {
+
+    showToast(
+      err.message
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   CURRENT MONTH
+===================================================== */
+
+function getCurrentMonth() {
+
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(
+      2,
+      '0'
+    );
+
+  return `${year}-${month}`;
+
+}
+
+
+/* =====================================================
+   DEEP LINK
+===================================================== */
+
+window.addEventListener(
+  'load',
+  () => {
+
+    loadMembers();
+
+
+    if (
+      window.location.hash
+    ) {
+
+      const id =
+        window.location.hash
+          .slice(1);
+
+
+      setTimeout(
+        () => {
+
+          const row =
+            document.getElementById(
+              `member-${id}`
+            );
+
+
+          if (row) {
+
+            viewDetail(id);
+
+          }
+
+        },
+        500
+      );
+
+    }
+
+  }
+);
+
+</script>
+
+{% endblock %}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}จัดการค่าใช้จ่ายกลุ่ม{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{% if user %}
+<header class="topbar">
+  <div class="brand">💸 ค่าใช้จ่ายกลุ่ม</div>
+  <button class="nav-toggle" id="navToggle">☰</button>
+  <nav id="navMenu">
+    <a href="/dashboard">Dashboard</a>
+    {% if user.role.value == 'admin' %}
+      <a href="/members">Members</a>
+      <a href="/expenses">Expenses</a>
+      <a href="/slips">Payment Slips</a>
+      <a href="/history">History</a>
+    {% else %}
+      <a href="/slips">Upload Slip</a>
+      <a href="/history">Payment History</a>
+    {% endif %}
+    <a href="/profile">Profile</a>
+    <a href="#" id="logoutBtn">ออกจากระบบ</a>
+  </nav>
+</header>
+{% endif %}
+<main class="container">
+{% block content %}{% endblock %}
+</main>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

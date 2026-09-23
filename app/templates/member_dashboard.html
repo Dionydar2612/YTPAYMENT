@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>สวัสดี {{ user.full_name or user.username }} 👋</h1>
+<p class="muted" id="monthLabel">กำลังโหลด...</p>
+
+<div class="card-grid">
+  <div class="stat-card">
+    <div class="stat-label">ยอดที่ต้องจ่ายเดือนนี้</div>
+    <div class="stat-value" id="baseAmount">-</div>
+  </div>
+  <div class="stat-card warn">
+    <div class="stat-label">ยอดค้าง</div>
+    <div class="stat-value" id="outstanding">-</div>
+  </div>
+  <div class="stat-card good">
+    <div class="stat-label">เครดิตเดือนหน้า</div>
+    <div class="stat-value" id="creditNew">-</div>
+  </div>
+  <div class="stat-card highlight">
+    <div class="stat-label">ยอดที่ต้องชำระจริง</div>
+    <div class="stat-value" id="totalToPay">-</div>
+  </div>
+</div>
+
+<div class="detail-box" id="detailBox"></div>
+
+<div class="action-row">
+  <a href="/slips" class="btn btn-primary">📤 Upload Slip</a>
+  <a href="/history" class="btn btn-secondary">🧾 ประวัติการชำระเงิน</a>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(async () => {
+  try {
+    const data = await apiFetch('/api/dashboard');
+    const b = data.balance;
+    document.getElementById('monthLabel').textContent = 'ประจำเดือน ' + data.month;
+    document.getElementById('baseAmount').textContent = fmtMoney(b.base_amount);
+    document.getElementById('outstanding').textContent = fmtMoney(b.outstanding);
+    document.getElementById('creditNew').textContent = fmtMoney(b.credit_new);
+    document.getElementById('totalToPay').textContent = fmtMoney(b.outstanding);
+
+    let statusLabel = { unpaid: 'ยังไม่ชำระ', partial: 'ชำระบางส่วน', paid: 'ชำระครบ', credit: 'มีเครดิต' }[b.status] || b.status;
+    document.getElementById('detailBox').innerHTML = `
+      <table class="kv-table">
+        <tr><td>ยอดค่าใช้จ่ายเดือนนี้</td><td>${fmtMoney(b.base_amount)}</td></tr>
+        <tr><td>ยอดค้างเก่า</td><td>${fmtMoney(b.old_balance_carried)}</td></tr>
+        <tr><td>เครดิตที่ใช้แล้ว</td><td>-${fmtMoney(b.credit_used)}</td></tr>
+        <tr class="total-row"><td>รวมต้องจ่าย</td><td>${fmtMoney(b.total_due)}</td></tr>
+        <tr><td>จ่ายแล้ว</td><td>${fmtMoney(b.total_paid)}</td></tr>
+        <tr><td>สถานะ</td><td><span class="badge badge-${b.status}">${statusLabel}</span></td></tr>
+      </table>`;
+  } catch (err) {
+    showToast(err.message);
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Payment History{% endblock %}
+{% block content %}
+<h1>ประวัติการชำระเงิน</h1>
+{% if user.role.value == 'admin' %}
+<div class="form-card">
+  <label>เลือกสมาชิก</label>
+  <select id="userSelect"></select>
+</div>
+{% endif %}
+
+<h2>สรุปรายเดือน</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>เดือน</th><th>ต้องจ่าย</th><th>จ่ายแล้ว</th><th>ค้าง</th><th>เครดิต</th><th>สถานะ</th></tr></thead>
+  <tbody id="balanceRows"><tr><td colspan="6">กำลังโหลด...</td></tr></tbody>
+</table>
+</div>
+
+<h2>รายการชำระเงิน</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>เดือน</th><th>จำนวนเงิน</th><th>หมายเหตุ</th><th>วันที่</th></tr></thead>
+  <tbody id="paymentRows"><tr><td colspan="4">กำลังโหลด...</td></tr></tbody>
+</table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const isAdmin = {{ 'true' if user.role.value == 'admin' else 'false' }};
+const statusLabel = { unpaid: 'ยังไม่ชำระ', partial: 'ชำระบางส่วน', paid: 'ชำระครบ', credit: 'เครดิต' };
+
+async function renderHistory(userId) {
+  const qs = userId ? `?user_id=${userId}` : '';
+  const data = await apiFetch('/api/history' + qs);
+  document.getElementById('balanceRows').innerHTML = data.balances.map(b => `
+    <tr><td>${b.month}</td><td>${fmtMoney(b.total_due)}</td><td>${fmtMoney(b.total_paid)}</td>
+    <td>${fmtMoney(b.outstanding)}</td><td>${fmtMoney(b.credit_new)}</td>
+    <td><span class="badge badge-${b.status}">${statusLabel[b.status] || b.status}</span></td></tr>`
+  ).join('') || '<tr><td colspan="6">ยังไม่มีข้อมูล</td></tr>';
+
+  document.getElementById('paymentRows').innerHTML = data.payments.map(p => `
+    <tr><td>${p.month}</td><td>${fmtMoney(p.amount)}</td><td>${p.note || '-'}</td>
+    <td>${new Date(p.created_at).toLocaleString('th-TH')}</td></tr>`
+  ).join('') || '<tr><td colspan="4">ยังไม่มีรายการ</td></tr>';
+}
+
+(async () => {
+  if (isAdmin) {
+    const members = await apiFetch('/api/members');
+    const select = document.getElementById('userSelect');
+    select.innerHTML = members.map(m => `<option value="${m.id}">${m.username}${m.role === 'admin' ? ' (admin)' : ''}</option>`).join('');
+    select.addEventListener('change', () => renderHistory(select.value));
+    if (members.length) renderHistory(select.value);
+  } else {
+    renderHistory(null);
+  }
+})();
+</script>
+{% endblock %}

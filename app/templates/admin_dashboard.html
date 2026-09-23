@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<h1>ภาพรวมระบบ</h1>
+<p class="muted" id="monthLabel">กำลังโหลด...</p>
+
+<div class="card-grid">
+  <div class="stat-card"><div class="stat-label">จำนวนสมาชิก</div><div class="stat-value" id="memberCount">-</div></div>
+  <div class="stat-card"><div class="stat-label">จำนวนผู้ร่วมจ่าย</div><div class="stat-value" id="participantsCount">-</div></div>
+  <div class="stat-card"><div class="stat-label">ค่าใช้จ่ายเดือนนี้</div><div class="stat-value" id="totalExpense">-</div></div>
+  <div class="stat-card good"><div class="stat-label">ยอดที่เก็บได้</div><div class="stat-value" id="collected">-</div></div>
+  <div class="stat-card warn"><div class="stat-label">ยอดค้างรวม</div><div class="stat-value" id="outstandingTotal">-</div></div>
+  <div class="stat-card highlight"><div class="stat-label">เครดิตรวม</div><div class="stat-value" id="creditTotal">-</div></div>
+</div>
+
+<h2>รายชื่อสมาชิกและยอด</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr><th>Username</th><th>ต้องจ่าย</th><th>จ่ายแล้ว</th><th>ค้าง</th><th>เครดิต</th><th>สถานะ</th><th></th></tr>
+  </thead>
+  <tbody id="rowsBody"><tr><td colspan="7">กำลังโหลด...</td></tr></tbody>
+</table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const statusLabel = { unpaid: 'ยังไม่ชำระ', partial: 'ชำระบางส่วน', paid: 'ชำระครบ', credit: 'เครดิต' };
+(async () => {
+  try {
+    const data = await apiFetch('/api/dashboard');
+    document.getElementById('monthLabel').textContent = 'ประจำเดือน ' + data.month;
+    const s = data.summary;
+    document.getElementById('memberCount').textContent = s.member_count;
+    document.getElementById('participantsCount').textContent = s.participants_count;
+    document.getElementById('totalExpense').textContent = fmtMoney(s.total_expense);
+    document.getElementById('collected').textContent = fmtMoney(s.collected);
+    document.getElementById('outstandingTotal').textContent = fmtMoney(s.outstanding_total);
+    document.getElementById('creditTotal').textContent = fmtMoney(s.credit_total);
+
+    const tbody = document.getElementById('rowsBody');
+    tbody.innerHTML = data.rows.map(r => `
+      <tr>
+        <td>${r.username}${r.role === 'admin' ? ' <span class="tag">admin</span>' : ''}${!r.is_active ? ' <span class="tag off">ปิดใช้งาน</span>' : ''}</td>
+        <td>${fmtMoney(r.total_due)}</td>
+        <td>${fmtMoney(r.total_paid)}</td>
+        <td>${fmtMoney(r.outstanding)}</td>
+        <td>${fmtMoney(r.credit_new)}</td>
+        <td><span class="badge badge-${r.status}">${statusLabel[r.status] || r.status}</span></td>
+        <td><a href="/members#${r.user_id}" class="link-btn">ดูรายละเอียด</a></td>
+      </tr>`).join('');
+  } catch (err) {
+    showToast(err.message);
+  }
+})();
+</script>
+{% endblock %}
