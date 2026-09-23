@@ -16,7 +16,9 @@ from app.models import (
     User,
     UserRole,
 )
-from app.services.calculation import recompute_user_balances
+from app.services.calculation import (
+    recompute_user_balances,
+)
 
 
 router = APIRouter(
@@ -28,12 +30,13 @@ router = APIRouter(
 ZERO = Decimal("0.00")
 
 
-def has_real_balance_data(balance: MonthlyBalance) -> bool:
-    """
-    ตรวจว่า MonthlyBalance มีข้อมูลจริงหรือไม่
+# ============================================================
+# ตรวจว่า MonthlyBalance มีข้อมูลจริงหรือไม่
+# ============================================================
 
-    ถ้าทุกค่าเป็น 0 จะถือว่ายังไม่มีข้อมูล
-    """
+def has_real_balance_data(
+    balance: MonthlyBalance,
+) -> bool:
 
     values = [
         balance.base_amount,
@@ -46,27 +49,26 @@ def has_real_balance_data(balance: MonthlyBalance) -> bool:
     ]
 
     return any(
-        value is not None and Decimal(str(value)) != ZERO
+        value is not None
+        and Decimal(str(value)) != ZERO
         for value in values
     )
 
+
+# ============================================================
+# หาเดือนที่มีข้อมูลจริง
+# ============================================================
 
 def get_real_months(
     db: Session,
     user_id: str,
 ):
-    """
-    หาเฉพาะเดือนที่มีข้อมูลจริงของสมาชิก
-
-    สำคัญ:
-    การเปิด History จะไม่สร้างเดือนใหม่
-    """
 
     months = set()
 
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
     # MonthlyBalance
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
 
     balances = (
         db.query(MonthlyBalance)
@@ -77,12 +79,17 @@ def get_real_months(
     )
 
     for balance in balances:
-        if has_real_balance_data(balance):
-            months.add(balance.month)
 
-    # ---------------------------------------------------------
+        if has_real_balance_data(
+            balance
+        ):
+            months.add(
+                balance.month
+            )
+
+    # --------------------------------------------------------
     # Payment
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
 
     payment_months = (
         db.query(Payment.month)
@@ -94,12 +101,15 @@ def get_real_months(
     )
 
     for row in payment_months:
-        if row[0]:
-            months.add(row[0])
 
-    # ---------------------------------------------------------
+        if row[0]:
+            months.add(
+                row[0]
+            )
+
+    # --------------------------------------------------------
     # Payment Slip
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
 
     slip_months = (
         db.query(PaymentSlip.month)
@@ -111,18 +121,22 @@ def get_real_months(
     )
 
     for row in slip_months:
-        if row[0]:
-            months.add(row[0])
 
-    # ---------------------------------------------------------
+        if row[0]:
+            months.add(
+                row[0]
+            )
+
+    # --------------------------------------------------------
     # Expense
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
 
     expense_months = (
         db.query(Expense.month)
         .join(
             ExpenseParticipant,
-            ExpenseParticipant.expense_id == Expense.id,
+            ExpenseParticipant.expense_id
+            == Expense.id,
         )
         .filter(
             ExpenseParticipant.user_id == user_id
@@ -132,38 +146,57 @@ def get_real_months(
     )
 
     for row in expense_months:
-        if row[0]:
-            months.add(row[0])
 
-    # ---------------------------------------------------------
-    # Credit Allocation
-    # ---------------------------------------------------------
+        if row[0]:
+            months.add(
+                row[0]
+            )
+
+    # --------------------------------------------------------
+    # Credit received
+    # --------------------------------------------------------
 
     credit_received_months = (
-        db.query(CreditAllocation.target_month)
+        db.query(
+            CreditAllocation.target_month
+        )
         .filter(
-            CreditAllocation.target_user_id == user_id
+            CreditAllocation.target_user_id
+            == user_id
         )
         .distinct()
         .all()
     )
 
     for row in credit_received_months:
+
         if row[0]:
-            months.add(row[0])
+            months.add(
+                row[0]
+            )
+
+    # --------------------------------------------------------
+    # Credit sent
+    # --------------------------------------------------------
 
     credit_sent_months = (
-        db.query(CreditAllocation.source_month)
+        db.query(
+            CreditAllocation.source_month
+        )
         .filter(
-            CreditAllocation.source_user_id == user_id
+            CreditAllocation.source_user_id
+            == user_id
         )
         .distinct()
         .all()
     )
 
     for row in credit_sent_months:
+
         if row[0]:
-            months.add(row[0])
+            months.add(
+                row[0]
+            )
 
     return sorted(
         months,
@@ -171,50 +204,60 @@ def get_real_months(
     )
 
 
+# ============================================================
+# History
+# ============================================================
+
 @router.get("")
 def get_history(
     user_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # =========================================================
-    # Determine target user
-    # =========================================================
+
+    # --------------------------------------------------------
+    # กำหนด user ที่ต้องการดู
+    # --------------------------------------------------------
 
     target_id = user.id
 
-    if user_id and user.role == UserRole.admin:
+    if (
+        user_id
+        and user.role == UserRole.admin
+    ):
         target_id = user_id
 
-    elif user_id and user_id != user.id:
+    elif (
+        user_id
+        and user_id != user.id
+    ):
         raise HTTPException(
             status_code=403,
-            detail="ไม่สามารถดูประวัติของสมาชิกคนอื่นได้",
+            detail=(
+                "ไม่สามารถดูประวัติของสมาชิกคนอื่นได้"
+            ),
         )
 
-    # =========================================================
-    # IMPORTANT
+    # --------------------------------------------------------
+    # หาเฉพาะเดือนที่มีข้อมูลจริง
     #
-    # Do NOT call:
-    #
-    #     _last_known_month(...)
-    #     recompute_user_balances(...)
-    #
-    # for the current/latest month automatically.
-    #
-    # History must not create a new MonthlyBalance.
-    # =========================================================
+    # สำคัญ:
+    # ไม่มี current_month()
+    # ไม่มี _last_known_month()
+    # ไม่มีการสร้างเดือนใหม่
+    # --------------------------------------------------------
 
     real_months = get_real_months(
         db,
         target_id,
     )
 
-    # =========================================================
-    # Recalculate ONLY months that already have real data
-    # =========================================================
+    # --------------------------------------------------------
+    # Recompute เฉพาะเดือนที่มีข้อมูล
+    # --------------------------------------------------------
 
     for month in real_months:
+
         recompute_user_balances(
             db,
             target_id,
@@ -223,25 +266,35 @@ def get_history(
 
     db.commit()
 
-    # =========================================================
-    # Reload balances after recalculation
-    # =========================================================
+    # --------------------------------------------------------
+    # โหลด balances
+    # --------------------------------------------------------
 
-    balances = (
-        db.query(MonthlyBalance)
-        .filter(
-            MonthlyBalance.user_id == target_id,
-            MonthlyBalance.month.in_(real_months),
-        )
-        .order_by(
-            MonthlyBalance.month.desc()
-        )
-        .all()
-    )
+    if real_months:
 
-    # =========================================================
+        balances = (
+            db.query(MonthlyBalance)
+            .filter(
+                MonthlyBalance.user_id
+                == target_id,
+
+                MonthlyBalance.month.in_(
+                    real_months
+                ),
+            )
+            .order_by(
+                MonthlyBalance.month.desc()
+            )
+            .all()
+        )
+
+    else:
+
+        balances = []
+
+    # --------------------------------------------------------
     # Payments
-    # =========================================================
+    # --------------------------------------------------------
 
     payments = (
         db.query(Payment)
@@ -254,9 +307,9 @@ def get_history(
         .all()
     )
 
-    # =========================================================
+    # --------------------------------------------------------
     # Slips
-    # =========================================================
+    # --------------------------------------------------------
 
     slips = (
         db.query(PaymentSlip)
@@ -269,9 +322,9 @@ def get_history(
         .all()
     )
 
-    # =========================================================
+    # --------------------------------------------------------
     # Response
-    # =========================================================
+    # --------------------------------------------------------
 
     return {
         "user_id": target_id,
@@ -279,27 +332,44 @@ def get_history(
         "balances": [
             {
                 "month": b.month,
-                "base_amount": str(b.base_amount),
-                "old_balance_carried": str(
-                    b.old_balance_carried
-                ),
-                "credit_used": str(
-                    b.credit_used
-                ),
-                "total_due": str(
-                    b.total_due
-                ),
-                "total_paid": str(
-                    b.total_paid
-                ),
-                "outstanding": str(
-                    b.outstanding
-                ),
-                "credit_new": str(
-                    b.credit_new
-                ),
-                "status": b.status.value,
+
+                "base_amount":
+                    str(b.base_amount),
+
+                "old_balance_carried":
+                    str(
+                        b.old_balance_carried
+                    ),
+
+                "credit_used":
+                    str(
+                        b.credit_used
+                    ),
+
+                "total_due":
+                    str(
+                        b.total_due
+                    ),
+
+                "total_paid":
+                    str(
+                        b.total_paid
+                    ),
+
+                "outstanding":
+                    str(
+                        b.outstanding
+                    ),
+
+                "credit_new":
+                    str(
+                        b.credit_new
+                    ),
+
+                "status":
+                    b.status.value,
             }
+
             for b in balances
         ],
 
@@ -309,8 +379,10 @@ def get_history(
                 "month": p.month,
                 "amount": str(p.amount),
                 "note": p.note,
-                "created_at": p.created_at.isoformat(),
+                "created_at":
+                    p.created_at.isoformat(),
             }
+
             for p in payments
         ],
 
@@ -318,13 +390,19 @@ def get_history(
             {
                 "id": s.id,
                 "month": s.month,
-                "amount_claimed": str(
-                    s.amount_claimed
-                ),
-                "status": s.status.value,
-                "uploaded_at": s.uploaded_at.isoformat(),
-                "reject_reason": s.reject_reason,
+                "amount_claimed":
+                    str(s.amount_claimed),
+
+                "status":
+                    s.status.value,
+
+                "uploaded_at":
+                    s.uploaded_at.isoformat(),
+
+                "reject_reason":
+                    s.reject_reason,
             }
+
             for s in slips
         ],
     }
